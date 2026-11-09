@@ -509,7 +509,12 @@ async def main(page: ft.Page):
         }
         state["receipt_field_style"] = receipt_field_style
         state["receipt_items"] = [new_receipt_item()]
-        state["receipt_message"] = ft.Text("Sedang menganalisis resit…", size=12, color=MUTED)
+        state["receipt_items"] = [new_receipt_item()]
+        state["receipt_message"] = ft.Text(
+            "Sedang menganalisis resit…",
+            size=12,
+            color=MUTED,
+        )
         review_message = state["receipt_message"]
         state["route"] = "receipt_review"
         state["receipt_busy"] = True
@@ -519,35 +524,93 @@ async def main(page: ft.Page):
             log.info("Receipt analysis started")
             result = await analyze_receipt(state, photo)
             log.info("Receipt analysis response received")
-            if state["route"] != "receipt_review" or state["receipt_message"] is not review_message:
+
+            if (
+                state["route"] != "receipt_review"
+                or state["receipt_message"] is not review_message
+            ):
                 return
-            description = result.get("description")
-            amount = result.get("amount")
-            category = result.get("category")
-            receipt_item = state["receipt_items"][0]
-            if isinstance(description, str):
-                receipt_item["description"].value = description.strip()[:200]
-            if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
-                receipt_item["amount"].value = f"{amount:.2f}"
-            if isinstance(category, str) and category in CATEGORY_OPTIONS:
-                receipt_item["category"].value = category
-            review_message.value = "Semak cadangan AI dan isi butiran yang masih kosong."
+
+            detected_items = result.get("items", [])
+
+            if not isinstance(detected_items, list) or not detected_items:
+                raise CoachError(
+                    "Gemini tidak menemui item yang boleh dibaca."
+                )
+
+            state["receipt_items"] = []
+
+            for detected in detected_items:
+                if not isinstance(detected, dict):
+                    continue
+
+                receipt_item = new_receipt_item()
+
+                description = detected.get("description")
+                amount = detected.get("amount")
+                category = detected.get("category")
+                quantity = detected.get("quantity")
+
+                if isinstance(description, str):
+                    receipt_item["description"].value = description.strip()[:200]
+
+                if (
+                    type(amount) in (int, float)
+                    and 0 < amount <= 1_000_000_000
+                    and math.isfinite(amount)
+                ):
+                    receipt_item["amount"].value = f"{amount:.2f}"
+
+                if isinstance(quantity, str):
+                    receipt_item["quantity"].value = quantity.strip()[:40]
+
+                if isinstance(category, str) and category in CATEGORY_OPTIONS:
+                    receipt_item["category"].value = category
+
+                state["receipt_items"].append(receipt_item)
+
+            if not state["receipt_items"]:
+                raise CoachError(
+                    "Tiada item yang dapat dikenal pasti. "
+                    "Sila isi butiran secara manual."
+                )
+
+            review_message.value = (
+                f"{len(state['receipt_items'])} item dikesan. "
+                "Semak dan betulkan butiran sebelum menyimpan."
+            )
+
         except CoachError as error:
             log.warning("Receipt analysis: %s", error)
-            review_message.value = f"{error} Anda boleh isi butiran secara manual."
+
+            state["receipt_items"] = [new_receipt_item()]
+            review_message.value = (
+                f"{error} Anda boleh isi butiran secara manual."
+            )
+
         except Exception:
             log.exception("Unexpected receipt analysis failure")
-            review_message.value = "Analisis resit gagal. Sila isi butiran secara manual."
+
+            state["receipt_items"] = [new_receipt_item()]
+            review_message.value = (
+                "Analisis resit gagal. Sila isi butiran secara manual."
+            )
+
         finally:
-            if state["route"] == "receipt_review" and state["receipt_message"] is review_message:
+            if (
+                state["route"] == "receipt_review"
+                and state["receipt_message"] is review_message
+            ):
                 state["receipt_busy"] = False
                 render()
 
     def new_receipt_item():
         field_style = state["receipt_field_style"]
+
         return {
             "description": ft.TextField(
-                label="Apa yang dibeli?", **field_style,
+                label="Apa yang dibeli?",
+                **field_style,
             ),
             "amount": ft.TextField(
                 label="Jumlah (RM)",
@@ -555,10 +618,18 @@ async def main(page: ft.Page):
                 keyboard_type=ft.KeyboardType.NUMBER,
                 **field_style,
             ),
+            "quantity": ft.TextField(
+                label="Kuantiti (jika diketahui)",
+                hint_text="Contoh: 2",
+                **field_style,
+            ),
             "category": ft.Dropdown(
                 value="Lain-lain",
                 label="Kategori",
-                options=[ft.DropdownOption(text=item) for item in CATEGORY_OPTIONS],
+                options=[
+                    ft.DropdownOption(text=item)
+                    for item in CATEGORY_OPTIONS
+                ],
                 filled=True,
                 fill_color=ft.Colors.WHITE,
                 border_color=ft.Colors.BLUE_GREY_100,
@@ -567,7 +638,6 @@ async def main(page: ft.Page):
                 content_padding=14,
             ),
         }
-
     def add_receipt_item():
         state["receipt_items"].append(new_receipt_item())
         render()
@@ -596,43 +666,72 @@ async def main(page: ft.Page):
         render()
         try:
             await camera.resume_preview()
-        except Exception as error:
-            log.warning("Camera preview could not resume: %s", error)
-
     async def save_receipt():
         entries = []
-        for index, item in enumerate(state["receipt_items"], start=1):
-            description = (item["description"].value or "").strip()
+
+        for index, item in enumerate(
+            state["receipt_items"],
+            start=1,
+        ):
+            description = (
+                item["description"].value or ""
+            ).strip()
+
             amount = number(item["amount"].value)
+
+            quantity = (
+                item["quantity"].value or ""
+            ).strip()
+
             if not description and amount is None:
                 continue
+
             if not description or amount is None or amount <= 0:
                 state["receipt_message"].value = (
                     f"Lengkapkan keterangan dan jumlah melebihi RM 0 "
-                    f"untuk butiran {index}, atau biarkan kedua-dua medan kosong."
+                    f"untuk item {index}, atau biarkan kedua-dua medan "
+                    "kosong."
                 )
                 page.update()
                 return
-            category = CATEGORY_OPTIONS.get(item["category"].value, "Other")
-            entries.append({
+
+            category = CATEGORY_OPTIONS.get(
+                item["category"].value,
+                "Other",
+            )
+
+            entry = {
                 "description": description,
                 "category": category,
                 "date": "Sebentar tadi · imbasan",
                 "amount": amount,
-            })
+            }
+
+            if quantity:
+                entry["quantity"] = quantity[:40]
+
+            entries.append(entry)
+
         if not entries:
-            state["receipt_message"].value = "Isi sekurang-kurangnya satu butiran transaksi sebelum menyimpan."
+            state["receipt_message"].value = (
+                "Isi sekurang-kurangnya satu item sebelum menyimpan."
+            )
             page.update()
             return
+
         state["transactions"][0:0] = entries
+
         await persist_transactions()
+
         state["camera"] = None
         state["camera_ready"] = False
         state["receipt_photo"] = None
+        state["receipt_items"] = []
+
         state["route"] = "app"
         state["tab"] = "Transactions"
-        render()
 
+        render()
     def add_allowance():
         amount = ft.TextField(
             label="Jumlah elaun (RM)",
