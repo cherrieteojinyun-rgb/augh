@@ -16,20 +16,30 @@ from theme import (
 def live(camera, status, on_capture, on_cancel):
     return ft.Column(
         [
-            ft.TextButton("←  Kembali ke transaksi", on_click=on_cancel),
+            ft.TextButton(
+                "←  Kembali ke transaksi",
+                on_click=on_cancel,
+            ),
             title("Imbas resit", size=27),
             label(
                 "Halakan kamera ke resit atau tangkap skrin pembelian anda.",
                 color=MUTED,
             ),
-            card(ft.Column([camera, status], spacing=10), padding=10),
+            card(
+                ft.Column([camera, status], spacing=10),
+                padding=10,
+            ),
             card(
                 ft.Row(
                     [
-                        ft.Icon(ft.Icons.INFO_OUTLINE, color=PRIMARY),
+                        ft.Icon(
+                            ft.Icons.INFO_OUTLINE,
+                            color=PRIMARY,
+                        ),
                         label(
-                            "Gambar resit dihantar kepada Gemini untuk analisis automatik. "
-                            "Semak cadangan sebelum menyimpan.",
+                            "Gambar resit dihantar kepada Gemini untuk "
+                            "mengenal pasti setiap item. Semak cadangan "
+                            "sebelum menyimpan.",
                             size=12,
                             color=MUTED,
                         ),
@@ -39,7 +49,11 @@ def live(camera, status, on_capture, on_cancel):
                 color=PURPLE_SOFT,
                 padding=12,
             ),
-            primary_button("Ambil gambar", on_capture, icon=ft.Icons.CAMERA_ALT),
+            primary_button(
+                "Ambil gambar",
+                on_capture,
+                icon=ft.Icons.CAMERA_ALT,
+            ),
         ],
         spacing=14,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
@@ -59,7 +73,10 @@ def review(
     if busy:
         return ft.Column(
             [
-                ft.TextButton("←  Kembali ke transaksi", on_click=on_cancel),
+                ft.TextButton(
+                    "←  Kembali ke transaksi",
+                    on_click=on_cancel,
+                ),
                 title("Analisis resit", size=27),
                 message,
                 ft.ProgressBar(),
@@ -68,14 +85,21 @@ def review(
         )
 
     item_cards = []
+
     for index, item in enumerate(items):
-        fields = [item["description"], item["amount"], item["category"]]
+        fields = [
+            item["description"],
+            item["amount"],
+            item["quantity"],
+            item["category"],
+        ]
+
         item_cards.append(
             card(
                 ft.Column(
                     [
                         label(
-                            f"Butiran {index + 1}",
+                            f"Item {index + 1}",
                             size=15,
                             weight=ft.FontWeight.BOLD,
                         ),
@@ -90,10 +114,14 @@ def review(
 
     return ft.Column(
         [
-            ft.TextButton("←  Kembali ke transaksi", on_click=on_cancel),
+            ft.TextButton(
+                "←  Kembali ke transaksi",
+                on_click=on_cancel,
+            ),
             title("Semak pembelian anda", size=27),
             label(
-                "Semak keterangan, jumlah dan kategori sebelum menyimpan.",
+                "Gemini akan mengasingkan barang yang dikesan. "
+                "Semak nama, harga, kuantiti dan kategori setiap item.",
                 color=MUTED,
             ),
             card(
@@ -109,10 +137,13 @@ def review(
             ft.Container(
                 content=ft.Row(
                     [
-                        ft.Icon(ft.Icons.EDIT_NOTE, color=CORAL),
+                        ft.Icon(
+                            ft.Icons.EDIT_NOTE,
+                            color=CORAL,
+                        ),
                         label(
-                            "Gambar berjaya diambil. Sila isi atau betulkan "
-                            "butiran di bawah.",
+                            "Semak semua cadangan AI. Harga yang tidak "
+                            "dapat dibaca perlu diisi secara manual.",
                             size=12,
                             color=CORAL,
                         ),
@@ -126,7 +157,11 @@ def review(
             card(
                 ft.Column(
                     [
-                        label("Butiran transaksi", size=16, weight=ft.FontWeight.BOLD),
+                        label(
+                            "Butiran transaksi",
+                            size=16,
+                            weight=ft.FontWeight.BOLD,
+                        ),
                         *item_cards,
                         message,
                     ],
@@ -136,7 +171,7 @@ def review(
                 padding=16,
             ),
             ft.OutlinedButton(
-                content=ft.Text("Tambah butiran transaksi"),
+                content=ft.Text("Tambah item secara manual"),
                 icon=ft.Icons.ADD,
                 on_click=on_add_item,
             ),
